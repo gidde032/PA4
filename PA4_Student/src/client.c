@@ -15,9 +15,34 @@ void printSyntax(){
 
 int connect_to_server(char *server_addr, int server_port)
 {
-    // TODO: create a TCP socket, connect to (server_addr, server_port),
-    //       return the socket fd.
-    return -1;
+    // creating socket
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("socket");
+        return -1;
+    }
+
+    // completing socket address struct
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(server_port);
+
+    // converting address to binary
+    if (inet_pton(AF_INET, server_addr, &addr.sin_addr) < 1) {
+        perror("inet_pton");
+        close(sockfd);
+        return -1;
+    }
+
+    // connecting to server
+    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("connect");
+        close(sockfd);
+        return -1;
+    }
+
+    return sockfd;
 }
 
 void get_item_list(int sock_fd, FILE *log_fp)

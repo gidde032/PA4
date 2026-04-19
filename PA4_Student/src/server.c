@@ -126,9 +126,9 @@ void handle_get_stock(int client_fd)
     read(client_fd, name, MAX_STR);
 
     pthread_mutex_lock(&inventory_lock);
-    for (int i = 0; i < num_items; i++) {
+    for (int i = 0; i < num_items; i++) { // loop through inventory checking for item
         struct item *item = &inventory[i];
-        if (strcmp(item->name, name) == 0) {
+        if (strcmp(item->name, name) == 0) { // write stock info if found
             msg_enum rsp = STOCK_INFO;
             write(client_fd, &rsp, sizeof(msg_enum));
             write(client_fd, &item->stock, sizeof(int));
@@ -139,7 +139,7 @@ void handle_get_stock(int client_fd)
     }
     pthread_mutex_unlock(&inventory_lock);
 
-    msg_enum rsp = ERROR_MSG;
+    msg_enum rsp = ERROR_MSG; // not found error
     write(client_fd, &rsp, sizeof(msg_enum));
     write(client_fd, "item not found", MAX_STR);
 }
@@ -153,7 +153,37 @@ void handle_get_stock(int client_fd)
 // ============================================================
 void handle_buy_item(int client_fd)
 {
-    // TODO
+    char name[MAX_STR]; // reading item name and amount
+    int amount;
+    read(client_fd, name, MAX_STR);
+    read(client_fd, &amount, sizeof(int));
+
+    pthread_mutex_lock(&inventory_lock);
+    for (int i = 0; i < num_items; i++) { // loop through inventory looking for item
+        struct item *item = &inventory[i];
+        if (strcmp(item->name, name) == 0) {
+            if (item->stock < amount) {
+                pthread_mutex_unlock(&inventory_lock);
+                msg_enum rsp = ERROR_MSG;
+                write(client_fd, &rsp, sizeof(msg_enum));
+                write(client_fd, "not enough stock", MAX_STR);
+                return;
+            }
+            item->stock -= amount;
+            float total_cost = amount * item->price;
+            msg_enum rsp = BUY_OK;
+            write(client_fd, &rsp, sizeof(msg_enum));
+            write(client_fd, &item->stock, sizeof(int));
+            write(client_fd, &total_cost, sizeof(float));
+            pthread_mutex_unlock(&inventory_lock);
+            return;
+        }
+    }
+    pthread_mutex_unlock(&inventory_lock);
+
+    msg_enum rsp = ERROR_MSG; // not found error
+    write(client_fd, &rsp, sizeof(msg_enum));
+    write(client_fd, "item not found", MAX_STR);
 }
 
 // ============================================================
@@ -164,7 +194,28 @@ void handle_buy_item(int client_fd)
 // ============================================================
 void handle_sell_item(int client_fd)
 {
-    // TODO
+    char name[MAX_STR]; // reading item name and amount
+    int amount;
+    read(client_fd, name, MAX_STR);
+    read(client_fd, &amount, sizeof(int));
+
+    pthread_mutex_lock(&inventory_lock);
+    for (int i = 0; i < num_items; i++) { // loop through inventory checking for item
+        struct item *item = &inventory[i];
+        if (strcmp(item->name, name) == 0) { // write stock info if found
+            item->stock += amount;
+            msg_enum rsp = SELL_OK;
+            write(client_fd, &rsp, sizeof(msg_enum));
+            write(client_fd, &item->stock, sizeof(int));
+            pthread_mutex_unlock(&inventory_lock);
+            return;
+        }
+    }
+    pthread_mutex_unlock(&inventory_lock);
+
+    msg_enum rsp = ERROR_MSG; // not found error
+    write(client_fd, &rsp, sizeof(msg_enum));
+    write(client_fd, "item not found", MAX_STR);
 }
 
 // ============================================================

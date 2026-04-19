@@ -15,8 +15,23 @@ void printSyntax(){
 // ============================================================
 void load_inventory(char *filename)
 {
-    // TODO: open the file, skip the header, read each line into
-    //       inventory[num_items], increment num_items.
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+        perror("fopen");
+        exit(1);
+    }
+
+    char line[128];
+    fgets(line, sizeof(line), f); // skipping header
+
+    // read each line into inventory, don't exceed max num of items
+    while (fgets(line, sizeof(line), f) && num_items < MAX_ITEMS) {
+        struct item *item = &inventory[num_items];
+        sscanf(line, "%63[^,],%d,%f", item->name, &item->stock, &item->price);
+        num_items++;
+    }
+
+    fclose(f);
 }
 
 // ============================================================

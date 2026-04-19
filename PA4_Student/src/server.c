@@ -140,8 +140,11 @@ void handle_get_stock(int client_fd)
     pthread_mutex_unlock(&inventory_lock);
 
     msg_enum rsp = ERROR_MSG; // not found error
+    char err[MAX_STR];
+    strncpy(err, "item not found", MAX_STR);
+
     write(client_fd, &rsp, sizeof(msg_enum));
-    write(client_fd, "item not found", MAX_STR);
+    write(client_fd, err, MAX_STR);
 }
 
 // ============================================================
@@ -165,8 +168,11 @@ void handle_buy_item(int client_fd)
             if (item->stock < amount) {
                 pthread_mutex_unlock(&inventory_lock);
                 msg_enum rsp = ERROR_MSG;
+                char err[MAX_STR];
+                strncpy(err, "not enough stock", MAX_STR);
+
                 write(client_fd, &rsp, sizeof(msg_enum));
-                write(client_fd, "not enough stock", MAX_STR);
+                write(client_fd, err, MAX_STR);
                 return;
             }
             item->stock -= amount;
@@ -182,8 +188,11 @@ void handle_buy_item(int client_fd)
     pthread_mutex_unlock(&inventory_lock);
 
     msg_enum rsp = ERROR_MSG; // not found error
+    char err[MAX_STR];
+    strncpy(err, "item not found", MAX_STR);
+
     write(client_fd, &rsp, sizeof(msg_enum));
-    write(client_fd, "item not found", MAX_STR);
+    write(client_fd, err, MAX_STR);
 }
 
 // ============================================================
@@ -214,8 +223,11 @@ void handle_sell_item(int client_fd)
     pthread_mutex_unlock(&inventory_lock);
 
     msg_enum rsp = ERROR_MSG; // not found error
+    char err[MAX_STR];
+    strncpy(err, "item not found", MAX_STR);
+
     write(client_fd, &rsp, sizeof(msg_enum));
-    write(client_fd, "item not found", MAX_STR);
+    write(client_fd, err, MAX_STR);
 }
 
 // ============================================================
@@ -250,9 +262,39 @@ void save_inventory()
 // ============================================================
 void *handle_client(void *arg)
 {
-    // TODO: extract client_fd from arg, free(arg), loop reading
-    //       msg_type and calling handle_* functions. Remember to
-    //       dispatch ENC_SEARCH_ITEM to handle_enc_search (bonus).
+    // extracting client_fd from arg
+    int client_fd = *((int *)arg);
+    free(arg);
+
+    // looping while client is requesting
+    while (1) {
+        msg_enum msg;
+        if (read(client_fd, &msg, sizeof(msg_enum)) < 1) { // break if client disconnects
+            break;
+        }
+        
+        switch (msg) { // handle request by type
+            case LIST_ITEMS:
+                handle_list_items(client_fd);
+                break;
+            case SEARCH_ITEM:
+                handle_search(client_fd);
+                break;
+            case GET_STOCK:
+                handle_get_stock(client_fd);
+                break;
+            case BUY_ITEM:
+                handle_buy_item(client_fd);
+                break;
+            case SELL_ITEM:
+                handle_sell_item(client_fd);
+                break;
+            default:
+                break;
+        }
+    }
+
+    close(client_fd);
     return NULL;
 }
 
@@ -267,14 +309,53 @@ void sigterm_handler(int sig)
 
 int main(int argc, char *argv[])
 {
-    // TODO:
-    //   1. check argc, call printSyntax() on error
-    //   2. parse server_addr, server_port (and num_workers if you use it)
-    //   3. call bookeepingCode() to set up output/
-    //   4. load_inventory("items.csv")
-    //   5. signal(SIGTERM, sigterm_handler)
-    //   6. create a TCP socket, bind, listen
-    //   7. accept loop: for each client, malloc an int*, store the fd,
-    //      pthread_create(handle_client, ...), pthread_detach(...)
+    if (argc != 4) {
+        printSyntax();
+        return 1;
+    }
+
+    char *server_addr = argv[1];
+    int server_port = atoi(argv[2]);
+
+    bookeepingCode(); // set up output/
+
+    load_inventory("items.csv");
+
+    signal(SIGTERM, sigterm_handler); // use specified handler
+
+    // creating socket
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("socket");
+        return 1;
+    }
+
+    // completing socket address struct
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(server_port);
+
+    // converting address to binary
+    if (inet_pton(AF_INET, server_addr, &addr.sin_addr) < 1) {
+        perror("inet_pton");
+        close(sockfd);
+        return 1;
+    }
+
+    // binding socket and listening
+    bind(sockfd, (struct sockaddr *)&addr, sizeof(addr));
+    listen(sockfd, 10);
+
+    while (1) { // accept loop
+        int client_fd = accept(sockfd, NULL, NULL); // accept client
+        int *fd = malloc(sizeof(int));
+        *fd = client_fd;
+
+        pthread_t client; // create thread using client handling function
+        pthread_create(&client, NULL, handle_client, fd);
+        pthread_detach(client);
+    }
+
     return 0;
 }

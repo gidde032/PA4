@@ -67,8 +67,37 @@ void handle_list_items(int client_fd)
 // ============================================================
 void handle_search(int client_fd)
 {
-    // TODO: read the query, scan inventory, build a results array,
-    //       send the count and each matching item back.
+    struct item results[MAX_RESULTS];
+    int count = 0;
+
+    // reading query from client
+    char query[MAX_STR];
+    read(client_fd, query, MAX_STR);
+
+    pthread_mutex_lock(&inventory_lock);
+    int i = 0;
+    while (i < num_items) // searching inventory for items in query
+    {
+        if (strstr(inventory[i].name, query)  && count < MAX_RESULTS) { // checking if query is a substring of item
+            results[count] = inventory[i];
+            count++;
+        }
+        i++;
+    }
+    pthread_mutex_unlock(&inventory_lock);
+
+    // writing response
+    msg_enum rsp = SEARCH_RESULTS;
+    write(client_fd, &rsp, sizeof(msg_enum));
+
+    write(client_fd, &count, sizeof(int));
+
+    i = 0;
+    while (i < count)
+    {
+        write(client_fd, &results[i], sizeof(struct item));
+        i++;
+    }
 }
 
 // ============================================================
@@ -93,7 +122,26 @@ void handle_enc_search(int client_fd)
 // ============================================================
 void handle_get_stock(int client_fd)
 {
-    // TODO
+    char name[MAX_STR]; // reading item name
+    read(client_fd, name, MAX_STR);
+
+    pthread_mutex_lock(&inventory_lock);
+    for (int i = 0; i < num_items; i++) {
+        struct item *item = &inventory[i];
+        if (strcmp(item->name, name) == 0) {
+            msg_enum rsp = STOCK_INFO;
+            write(client_fd, &rsp, sizeof(msg_enum));
+            write(client_fd, &item->stock, sizeof(int));
+            write(client_fd, &item->price, sizeof(float));
+            pthread_mutex_unlock(&inventory_lock);
+            return;
+        }
+    }
+    pthread_mutex_unlock(&inventory_lock);
+
+    msg_enum rsp = ERROR_MSG;
+    write(client_fd, &rsp, sizeof(msg_enum));
+    write(client_fd, "item not found", MAX_STR);
 }
 
 // ============================================================
@@ -125,7 +173,22 @@ void handle_sell_item(int client_fd)
 // ============================================================
 void save_inventory()
 {
-    // TODO
+    FILE *f = fopen("output/inventory.csv", "w");
+    if (!f) {
+        perror("fopen");
+        exit(1);
+    }
+
+    // write header
+    fprintf(f, "name,stock,price\n");
+
+    // write each item's information
+    for (int i = 0; i < num_items; i++) {
+        struct item *item = &inventory[i];
+        fprintf(f, "%s,%d,%.2f\n", item->name, item->stock, item->price);
+    }
+    
+    fclose(f);
 }
 
 // ============================================================
@@ -147,7 +210,8 @@ void *handle_client(void *arg)
 // ============================================================
 void sigterm_handler(int sig)
 {
-    // TODO
+    save_inventory();
+    exit(0);
 }
 
 int main(int argc, char *argv[])
